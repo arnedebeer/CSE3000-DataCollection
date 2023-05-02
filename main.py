@@ -201,14 +201,14 @@ class MyWindow(QMainWindow):
         # Sampling the data
         self.data = []
         if gesture == "control":
-            num_readings = 1000
+            num_readings = 100
         else:
             num_readings = 500
         for i in range(num_readings):
             line = reader.readline()  # read a byte string
             if line:
                 string = line.decode().strip("\n")  # convert the byte string to a unicode string
-                t = list(map(int, string.split("  ")))
+                t = list(map(int, string.split(", ")))
                 self.data.append(t)  # add int to data list
         ser.close()
 
@@ -231,6 +231,8 @@ class MyWindow(QMainWindow):
 
         with open(f"{path}/candidate_{self.candidate_number}.pickle", "ab+") as file:
             pickle.dump(np.array(self.data), file)
+
+        #np.savetxt(f"{path}/candidate_{self.candidate_number}.csv", np.array(self.data, dtype=int), delimiter=',')
 
         print("done ", self.count)
 
