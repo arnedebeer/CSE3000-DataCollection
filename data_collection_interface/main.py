@@ -1,5 +1,5 @@
 from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QPushButton
+from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QPushButton, QComboBox
 import sys
 import serial
 import time
@@ -15,7 +15,7 @@ CANDIDATE_NUMBER = 1
 SAVE_PLOT = True
 
 class ReadLine:
-    def __init__(self, s):
+    def __init__(self, s):  
         self.buf = bytearray()
         self.s = s
 
@@ -56,57 +56,26 @@ class MyWindow(QMainWindow):
         # Change value to select the candidate number
         self.candidate_number = CANDIDATE_NUMBER
 
-    def control_data_button_clicked(self):
-        self.view("control")
-
-    def swipe_left_button_clicked(self):
-        self.view("swipe_left")
-
-    def swipe_right_button_clicked(self):
-        self.view("swipe_right")
-
-    def swipe_up_button_clicked(self):
-        self.view("swipe_up")
-
-    def swipe_down_button_clicked(self):
-        self.view("swipe_down")
-
-    def clockwise_button_clicked(self):
-        self.view("clockwise")
-
-    def counterclockwise_button_clicked(self):
-        self.view("counterclockwise")
-
-    def tap_button_clicked(self):
-        self.view("tap")
-
-    def double_tap_button_clicked(self):
-        self.view("double_tap")
-
-    def zoom_in_button_clicked(self):
-        self.view("zoom_in")
-
-    def zoom_out_button_clicked(self):
-        self.view("zoom_out")
+    def data_button_clicked(self):
+        self.view(self.sender().text())
 
     # method called by button
     def chosen_hand_button_clicked(self):
-
-        # if button is checked
         if self.chosen_hand_button.isChecked():
-
-            # setting background color to light-blue
             self.chosen_hand_button.setStyleSheet("background-color : lightblue")
             self.chosen_hand_button.setText("Left Hand")
             self.chosen_hand = "left_hand"
 
-        # if it is unchecked
         else:
-
-            # set background color back to light-grey
             self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
             self.chosen_hand_button.setText("Right Hand")
             self.chosen_hand = "right_hand"
+
+    def mode_change_index_changed(self, changedToIndex):
+        self.activeFrame.hide()
+        self.frames[changedToIndex].show()
+        self.activeFrame = self.frames[changedToIndex]
+        
 
     def initUI(self):
         # Connecting quit function
@@ -116,70 +85,65 @@ class MyWindow(QMainWindow):
         # QT display
         w = QtWidgets.QWidget()
         self.setCentralWidget(w)
-        grid = QtWidgets.QGridLayout(w)
-
-        # Initialize buttons on display
         self.setGeometry(200, 200, 300, 300)
+
+        general_grid = QtWidgets.QGridLayout(w)
+
+
+        # General buttons
         self.chosen_hand_button = QPushButton("Right Hand", self)
         self.chosen_hand_button.setCheckable(True)
         self.chosen_hand_button.clicked.connect(self.chosen_hand_button_clicked)
         self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
-        grid.addWidget(self.chosen_hand_button)
+        general_grid.addWidget(self.chosen_hand_button)
+
+        self.mode_dropdown = QComboBox()
+        self.mode_dropdown.addItems(["Gestures", "Digits", "Letters"])
+        self.mode_dropdown.currentIndexChanged.connect(self.mode_change_index_changed)
+        general_grid.addWidget(self.mode_dropdown)
 
         self.control_data_button = QPushButton(self)
         self.control_data_button.setText("control_data")
-        self.control_data_button.clicked.connect(self.control_data_button_clicked)
-        grid.addWidget(self.control_data_button)
+        # self.control_data_button.clicked.connect(self.data_button_clicked(data_name= "control"))
+        general_grid.addWidget(self.control_data_button)
 
-        self.swipe_left_button = QPushButton(self)
-        self.swipe_left_button.setText("swipe_left")
-        self.swipe_left_button.clicked.connect(self.swipe_left_button_clicked)
-        grid.addWidget(self.swipe_left_button)
+        gestures = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "clockwise", "counter_clockwise", "tap", "double_tap", "zoom_in", "zoom_out"]
+        digits = [("digit_"+str(i)) for i in range(10)]
+        characters = [("char_" + chr(i)) for i in range(ord('A'), ord('J')+1)]
 
-        self.swipe_right_button = QPushButton(self)
-        self.swipe_right_button.setText("swipe_right")
-        self.swipe_right_button.clicked.connect(self.swipe_right_button_clicked)
-        grid.addWidget(self.swipe_right_button)
+        #Grids
+        gestures_frame = self.generate_frame(gestures)
+        digits_frame = self.generate_frame(digits)
+        characters_frame = self.generate_frame(characters)
 
-        self.swipe_up_button = QPushButton(self)
-        self.swipe_up_button.setText("swipe_up")
-        self.swipe_up_button.clicked.connect(self.swipe_up_button_clicked)
-        grid.addWidget(self.swipe_up_button)
+        #put grids in global object
+        self.frames = [gestures_frame, digits_frame, characters_frame]
 
-        self.swipe_down_button = QPushButton(self)
-        self.swipe_down_button.setText("swipe_down")
-        self.swipe_down_button.clicked.connect(self.swipe_down_button_clicked)
-        grid.addWidget(self.swipe_down_button)
+        #Hide frames not used first
+        self.activeFrame = gestures_frame
+        digits_frame.hide()
+        characters_frame.hide()
 
-        self.clockwise_button = QPushButton(self)
-        self.clockwise_button.setText("clockwise")
-        self.clockwise_button.clicked.connect(self.clockwise_button_clicked)
-        grid.addWidget(self.clockwise_button)
+        general_grid.addWidget(gestures_frame)
+        general_grid.addWidget(digits_frame)
+        general_grid.addWidget(characters_frame)
 
-        self.counterclockwise_button = QPushButton(self)
-        self.counterclockwise_button.setText("counterclockwise")
-        self.counterclockwise_button.clicked.connect(self.counterclockwise_button_clicked)
-        grid.addWidget(self.counterclockwise_button)
+        
 
-        self.tap_button = QPushButton(self)
-        self.tap_button.setText("tap")
-        self.tap_button.clicked.connect(self.tap_button_clicked)
-        grid.addWidget(self.tap_button)
 
-        self.double_tap_button = QPushButton(self)
-        self.double_tap_button.setText("double_tap")
-        self.double_tap_button.clicked.connect(self.double_tap_button_clicked)
-        grid.addWidget(self.double_tap_button)
+    def generate_frame(self, grid_items):
+        grid = QtWidgets.QGridLayout()
+        # Initialize buttons on display
 
-        self.zoom_in_button = QPushButton(self)
-        self.zoom_in_button.setText("zoom_in")
-        self.zoom_in_button.clicked.connect(self.zoom_in_button_clicked)
-        grid.addWidget(self.zoom_in_button)
-
-        self.zoom_out_button = QPushButton(self)
-        self.zoom_out_button.setText("zoom_out")
-        self.zoom_out_button.clicked.connect(self.zoom_out_button_clicked)
-        grid.addWidget(self.zoom_out_button)
+        for label in grid_items:
+            button = QPushButton(self)
+            button.setText(label)
+            button.clicked.connect(self.data_button_clicked)
+            grid.addWidget(button)
+        
+        frame = QtWidgets.QFrame()
+        frame.setLayout(grid)
+        return frame
 
     def closeEvent(self, event):
         event.accept()
