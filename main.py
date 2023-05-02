@@ -6,8 +6,11 @@ import time
 import matplotlib.pyplot as plt
 import pickle
 import numpy as np
-import winsound
 import os
+
+SERIAL_PORT = '/dev/ttyACM0'
+CANDIDATE_NUMBER = 1
+
 
 
 class ReadLine:
@@ -50,7 +53,7 @@ class MyWindow(QMainWindow):
         self.count = 0
 
         # Change value to select the candidate number
-        self.candidate_number = 1
+        self.candidate_number = CANDIDATE_NUMBER
 
     def control_data_button_clicked(self):
         self.view("control")
@@ -185,13 +188,13 @@ class MyWindow(QMainWindow):
         # Select frequency and duration of beep
         frequency = 500  # Set Frequency To 2500 Hertz
         duration = 500  # Set Duration To 1000 ms == 1 second
-        winsound.Beep(frequency, duration)
+        #winsound.Beep(frequency, duration)
 
         self.count += 1
         print("starting ", self.count)
 
         # make sure the 'COM#' is set according the Windows Device Manager
-        ser = serial.Serial('COM7', 19200, timeout=1)
+        ser = serial.Serial(SERIAL_PORT, 19200, timeout=1)
         reader = ReadLine(ser)
         time.sleep(2)
 
