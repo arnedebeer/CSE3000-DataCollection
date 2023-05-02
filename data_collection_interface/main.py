@@ -1,5 +1,5 @@
 from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QPushButton, QComboBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QPushButton, QComboBox, QLineEdit, QLabel, QMessageBox
 import sys
 import serial
 import time
@@ -10,11 +10,19 @@ import os
 from util import serial_ports
 import threading
 
-# import winsound
+try:
+    import winsound
+except ImportError:
+    pass
 
-CANDIDATE_NUMBER = 1
-
+BAUD_RATE = 19200
+CANDIDATE_DEFAULT_NUMBER = 1
 SAVE_PLOT = True
+DATA_ROOT_PATH = "data_collection_interface/data"
+
+# Serial control bits
+MEAS_START = 0xAB
+REDO_CALIB = 0xAC
 
 class ReadLine:
     def __init__(self, s):  
@@ -59,23 +67,31 @@ class MyWindow(QMainWindow):
     into the appropriate pickle file.
     """
 
+    com_port = None
+
     def __init__(self):
         super(MyWindow,self).__init__()
         self.data = []
         self.chosen_hand = "right_hand"
         self.count = 0
         self.available_ports = serial_ports()
+
         if len(self.available_ports):
             self.com_port = self.available_ports[0]
 
         # Change value to select the candidate number
-        self.candidate_number = CANDIDATE_NUMBER
+        self.candidate_identifier = str(CANDIDATE_DEFAULT_NUMBER)
 
         self.initUI()
 
 
     def data_button_clicked(self):
-        self.view(self.sender().text())
+        if self.com_port is None:
+            msg = QMessageBox()
+            msg.setText("No COM port selected for serial connection...")
+            msg.exec()
+        else:
+            self.view(self.sender().text())
 
     # method called by button
     def chosen_hand_button_clicked(self):
@@ -96,7 +112,14 @@ class MyWindow(QMainWindow):
 
     def com_port_changed(self, changedToIndex):
         self.com_port = self.available_ports[changedToIndex]
-        
+
+    def candidate_text_changed(self, changedTo):
+        self.candidate_identifier = changedTo
+
+    def redo_calibration(self):
+        s = serial.Serial(self.com_port, BAUD_RATE, timeout=1)
+        s.write(np.uint16(REDO_CALIB).tobytes())
+        s.close()
 
     def initUI(self):
         # Connecting quit function
@@ -110,28 +133,38 @@ class MyWindow(QMainWindow):
 
         general_grid = QtWidgets.QGridLayout(w)
 
-
         # General buttons
-        self.chosen_hand_button = QPushButton("Right Hand", self)
-        self.chosen_hand_button.setCheckable(True)
-        self.chosen_hand_button.clicked.connect(self.chosen_hand_button_clicked)
-        self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
-        general_grid.addWidget(self.chosen_hand_button)
-
         self.port_dropdown = QComboBox()
         self.port_dropdown.addItems(self.available_ports)
         self.port_dropdown.currentIndexChanged.connect(self.com_port_changed)
         general_grid.addWidget(self.port_dropdown)
 
+        self.calibration_button = QPushButton("Redo calibration", self)
+        self.calibration_button.clicked.connect(self.redo_calibration)
+        self.calibration_button.setStyleSheet("background-color : red; color: white")
+        general_grid.addWidget(self.calibration_button)
+
+        general_grid.addWidget(QLabel("Candidate identifier:"))
+        self.candidate_textfield = QLineEdit()
+        self.candidate_textfield.setText(self.candidate_identifier)
+        self.candidate_textfield.textChanged.connect(self.candidate_text_changed)
+        general_grid.addWidget(self.candidate_textfield)
+
+        self.control_data_button = QPushButton(self)
+        self.control_data_button.setText("control_data")
+        self.control_data_button.clicked.connect(self.data_button_clicked)
+        general_grid.addWidget(self.control_data_button)
+        
         self.mode_dropdown = QComboBox()
         self.mode_dropdown.addItems(["Gestures", "Digits", "Letters"])
         self.mode_dropdown.currentIndexChanged.connect(self.mode_change_index_changed)
         general_grid.addWidget(self.mode_dropdown)
 
-        self.control_data_button = QPushButton(self)
-        self.control_data_button.setText("control_data")
-        # self.control_data_button.clicked.connect(self.data_button_clicked(data_name= "control"))
-        general_grid.addWidget(self.control_data_button)
+        self.chosen_hand_button = QPushButton("Right Hand", self)
+        self.chosen_hand_button.setCheckable(True)
+        self.chosen_hand_button.clicked.connect(self.chosen_hand_button_clicked)
+        self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
+        general_grid.addWidget(self.chosen_hand_button)
 
         gestures = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "clockwise", "counter_clockwise", "tap", "double_tap", "zoom_in", "zoom_out"]
         digits = [("digit_"+str(i)) for i in range(10)]
@@ -179,24 +212,26 @@ class MyWindow(QMainWindow):
         # Select frequency and duration of beep
         frequency = 500  # Set Frequency To 2500 Hertz
         duration = 500  # Set Duration To 1000 ms == 1 second
-        #winsound.Beep(frequency, duration)
+
+        if winsound is not None:
+            winsound.Beep(frequency, duration)
 
         self.count += 1
         print("starting ", self.count)
 
         # Set the number of samples we collect
-        if gesture == "control":
-            num_readings = 100
+        if gesture == "control_data":
+            num_readings = 1000
         else:
             num_readings = 500
 
-        # make sure the 'COM#' is set according the Windows Device Manager
-        ser = serial.Serial(self.com_port, 19200, timeout=1)
+        ser = serial.Serial(self.com_port, BAUD_RATE, timeout=1)
 
         # Construct data to send over to Arduino
-        header = np.uint16(0xAB)
+        header = np.uint16(MEAS_START)
         number = np.uint32(num_readings)
         data = header.tobytes() + number.tobytes()
+        print(len(data))
         ser.write(bytes(data))
         
         # The first value we get back is the calibration value
@@ -223,29 +258,32 @@ class MyWindow(QMainWindow):
         plt.plot(self.data)
         plt.xlabel('Time')
         plt.ylabel('Photodiode Reading')
-        plt.title(f'candidate {self.candidate_number}')
+        plt.title(f'candidate {self.candidate_identifier}')
         plt.show()
-
-        
 
         # Saving data
         if gesture == "control":
-            path = f"src/data_collection/data/{gesture}"
+            path = os.path.join(DATA_ROOT_PATH, gesture)
         else:
-            path = f"src/data_collection/data/{gesture}/{self.chosen_hand}"
+            path = os.path.join(DATA_ROOT_PATH, gesture, self.chosen_hand)
 
         # Create directory if it doesn't exist yet
-        if (not os.path.exists(path)):
+        if not os.path.exists(path):
             os.makedirs(path)
 
-        data_dict = dict(data = np.array(self.data), gesture = gesture, hand = self.chosen_hand, candidate = self.candidate_number, )
+        data_dict = {
+            'data': np.array(self.data),
+            'gesture': gesture,
+            'hand': self.chosen_hand,
+            'candidate': self.candidate_identifier,
+            'resistor_value': resistor_value
+        }
 
-        with open(f"{path}/candidate_{self.candidate_number}.pickle", "ab+") as file:
-            # pickle.dump(np.array(self.data), file)
+        with open(os.path.join(path, f"candidate_{self.candidate_identifier}.pickle"), "ab+") as file:
             pickle.dump(data_dict, file)
 
         if SAVE_PLOT:
-            plt.savefig(f"src/data_collection/data/{gesture}/{self.chosen_hand}/candidate_{self.candidate_number}.png")
+            plt.savefig(os.path.join(path, f"candidate_{self.candidate_identifier}_{self.count}.png"))
 
 
         print("done ", self.count)
