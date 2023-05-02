@@ -7,10 +7,12 @@ import matplotlib.pyplot as plt
 import pickle
 import numpy as np
 import os
+# import winsound
 
 SERIAL_PORT = '/dev/ttyACM0'
 CANDIDATE_NUMBER = 1
 
+SAVE_PLOT = True
 
 class ReadLine:
     def __init__(self, s):
@@ -217,6 +219,9 @@ class MyWindow(QMainWindow):
         plt.ylabel('Photodiode Reading')
         plt.title(f'candidate {self.candidate_number}')
         plt.show()
+
+        if SAVE_PLOT:
+            plt.savefig(f"src/data_collection/data/{gesture}/{self.chosen_hand}/candidate_{self.candidate_number}.png")
 
         # Saving data
         if gesture == "control":
