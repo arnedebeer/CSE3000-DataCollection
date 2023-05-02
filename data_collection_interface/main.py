@@ -233,8 +233,11 @@ class MyWindow(QMainWindow):
         if (not os.path.exists(path)):
             os.makedirs(path)
 
+        data_dict = dict(data = np.array(self.data), gesture = gesture, hand = self.chosen_hand, candidate = self.candidate_number, )
+
         with open(f"{path}/candidate_{self.candidate_number}.pickle", "ab+") as file:
-            pickle.dump(np.array(self.data), file)
+            # pickle.dump(np.array(self.data), file)
+            pickle.dump(data_dict, file)
 
         #np.savetxt(f"{path}/candidate_{self.candidate_number}.csv", np.array(self.data, dtype=int), delimiter=',')
 
