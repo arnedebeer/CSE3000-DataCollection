@@ -13,7 +13,7 @@ import threading
 try:
     import winsound
 except ImportError:
-    pass
+    winsound = None
 
 BAUD_RATE = 19200
 CANDIDATE_DEFAULT_NUMBER = 1
