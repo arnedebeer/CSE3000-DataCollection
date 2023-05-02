@@ -7,9 +7,11 @@ import matplotlib.pyplot as plt
 import pickle
 import numpy as np
 import os
+from util import serial_ports
+import threading
+
 # import winsound
 
-SERIAL_PORT = '/dev/ttyACM0'
 CANDIDATE_NUMBER = 1
 
 SAVE_PLOT = True
@@ -36,6 +38,17 @@ class ReadLine:
             else:
                 self.buf.extend(data)
 
+class ReadSerial(threading.Thread):
+    def __init__(self, serial: serial.Serial):
+        super().__init__()
+        self.serial = serial
+
+    def run(self) -> None:
+        print("Starting serial read thread")
+        while not self.serial.closed:
+            if self.serial.in_waiting > 0:
+                print(self.serial.read_all())
+
 
 class MyWindow(QMainWindow):
     """Class used for collecting data from candidates.
@@ -48,13 +61,18 @@ class MyWindow(QMainWindow):
 
     def __init__(self):
         super(MyWindow,self).__init__()
-        self.initUI()
         self.data = []
         self.chosen_hand = "right_hand"
         self.count = 0
+        self.available_ports = serial_ports()
+        if len(self.available_ports):
+            self.com_port = self.available_ports[0]
 
         # Change value to select the candidate number
         self.candidate_number = CANDIDATE_NUMBER
+
+        self.initUI()
+
 
     def data_button_clicked(self):
         self.view(self.sender().text())
@@ -75,6 +93,9 @@ class MyWindow(QMainWindow):
         self.activeFrame.hide()
         self.frames[changedToIndex].show()
         self.activeFrame = self.frames[changedToIndex]
+
+    def com_port_changed(self, changedToIndex):
+        self.com_port = self.available_ports[changedToIndex]
         
 
     def initUI(self):
@@ -96,6 +117,11 @@ class MyWindow(QMainWindow):
         self.chosen_hand_button.clicked.connect(self.chosen_hand_button_clicked)
         self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
         general_grid.addWidget(self.chosen_hand_button)
+
+        self.port_dropdown = QComboBox()
+        self.port_dropdown.addItems(self.available_ports)
+        self.port_dropdown.currentIndexChanged.connect(self.com_port_changed)
+        general_grid.addWidget(self.port_dropdown)
 
         self.mode_dropdown = QComboBox()
         self.mode_dropdown.addItems(["Gestures", "Digits", "Letters"])
@@ -149,7 +175,7 @@ class MyWindow(QMainWindow):
         event.accept()
 
     def view(self, gesture):
-
+        
         # Select frequency and duration of beep
         frequency = 500  # Set Frequency To 2500 Hertz
         duration = 500  # Set Duration To 1000 ms == 1 second
@@ -158,17 +184,33 @@ class MyWindow(QMainWindow):
         self.count += 1
         print("starting ", self.count)
 
+        # Set the number of samples we collect
+        if gesture == "control":
+            num_readings = 100
+        else:
+            num_readings = 500
+
         # make sure the 'COM#' is set according the Windows Device Manager
-        ser = serial.Serial(SERIAL_PORT, 19200, timeout=1)
+        ser = serial.Serial(self.com_port, 19200, timeout=1)
+
+        # Construct data to send over to Arduino
+        header = np.uint16(0xAB)
+        number = np.uint32(num_readings)
+        data = header.tobytes() + number.tobytes()
+        ser.write(bytes(data))
+        
+        # The first value we get back is the calibration value
+        while not ser.closed and ser.in_waiting == 0:
+            pass
+
+        resistor_value = ser.readline()
+        print("The resistor value is: %s" % int(resistor_value))
+        
         reader = ReadLine(ser)
         time.sleep(2)
 
         # Sampling the data
         self.data = []
-        if gesture == "control":
-            num_readings = 100
-        else:
-            num_readings = 500
         for i in range(num_readings):
             line = reader.readline()  # read a byte string
             if line:
@@ -184,8 +226,7 @@ class MyWindow(QMainWindow):
         plt.title(f'candidate {self.candidate_number}')
         plt.show()
 
-        if SAVE_PLOT:
-            plt.savefig(f"src/data_collection/data/{gesture}/{self.chosen_hand}/candidate_{self.candidate_number}.png")
+        
 
         # Saving data
         if gesture == "control":
@@ -203,7 +244,9 @@ class MyWindow(QMainWindow):
             # pickle.dump(np.array(self.data), file)
             pickle.dump(data_dict, file)
 
-        #np.savetxt(f"{path}/candidate_{self.candidate_number}.csv", np.array(self.data, dtype=int), delimiter=',')
+        if SAVE_PLOT:
+            plt.savefig(f"src/data_collection/data/{gesture}/{self.chosen_hand}/candidate_{self.candidate_number}.png")
+
 
         print("done ", self.count)
 
