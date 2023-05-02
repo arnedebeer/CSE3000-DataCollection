@@ -12,7 +12,6 @@ SERIAL_PORT = '/dev/ttyACM0'
 CANDIDATE_NUMBER = 1
 
 
-
 class ReadLine:
     def __init__(self, s):
         self.buf = bytearray()
