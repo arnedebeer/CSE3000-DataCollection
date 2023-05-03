@@ -11,3 +11,6 @@ data_collector/.vscode/c_cpp_properties.json
 data_collector/.vscode/launch.json
 data_collector/.vscode/ipch
 .vscode/c_cpp_properties.json
+
+.DS_Store
+**/__pycache__/

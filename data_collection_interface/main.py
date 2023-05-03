@@ -1,5 +1,5 @@
 from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QPushButton
+from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QPushButton, QComboBox, QLineEdit, QLabel, QMessageBox
 import sys
 import serial
 import time
@@ -7,15 +7,25 @@ import matplotlib.pyplot as plt
 import pickle
 import numpy as np
 import os
-# import winsound
+from util import serial_ports
+import threading
 
-SERIAL_PORT = '/dev/ttyACM0'
-CANDIDATE_NUMBER = 1
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
+BAUD_RATE = 19200
+CANDIDATE_DEFAULT_NUMBER = 1
 SAVE_PLOT = True
+DATA_ROOT_PATH = "data_collection_interface/data"
+
+# Serial control bits
+MEAS_START = 0xAB
+REDO_CALIB = 0xAC
 
 class ReadLine:
-    def __init__(self, s):
+    def __init__(self, s):  
         self.buf = bytearray()
         self.s = s
 
@@ -36,6 +46,17 @@ class ReadLine:
             else:
                 self.buf.extend(data)
 
+class ReadSerial(threading.Thread):
+    def __init__(self, serial: serial.Serial):
+        super().__init__()
+        self.serial = serial
+
+    def run(self) -> None:
+        print("Starting serial read thread")
+        while not self.serial.closed:
+            if self.serial.in_waiting > 0:
+                print(self.serial.read_all())
+
 
 class MyWindow(QMainWindow):
     """Class used for collecting data from candidates.
@@ -46,67 +67,59 @@ class MyWindow(QMainWindow):
     into the appropriate pickle file.
     """
 
+    com_port = None
+
     def __init__(self):
         super(MyWindow,self).__init__()
-        self.initUI()
         self.data = []
         self.chosen_hand = "right_hand"
         self.count = 0
+        self.available_ports = serial_ports()
+
+        if len(self.available_ports):
+            self.com_port = self.available_ports[0]
 
         # Change value to select the candidate number
-        self.candidate_number = CANDIDATE_NUMBER
+        self.candidate_identifier = str(CANDIDATE_DEFAULT_NUMBER)
 
-    def control_data_button_clicked(self):
-        self.view("control")
+        self.initUI()
 
-    def swipe_left_button_clicked(self):
-        self.view("swipe_left")
 
-    def swipe_right_button_clicked(self):
-        self.view("swipe_right")
-
-    def swipe_up_button_clicked(self):
-        self.view("swipe_up")
-
-    def swipe_down_button_clicked(self):
-        self.view("swipe_down")
-
-    def clockwise_button_clicked(self):
-        self.view("clockwise")
-
-    def counterclockwise_button_clicked(self):
-        self.view("counterclockwise")
-
-    def tap_button_clicked(self):
-        self.view("tap")
-
-    def double_tap_button_clicked(self):
-        self.view("double_tap")
-
-    def zoom_in_button_clicked(self):
-        self.view("zoom_in")
-
-    def zoom_out_button_clicked(self):
-        self.view("zoom_out")
+    def data_button_clicked(self):
+        if self.com_port is None:
+            msg = QMessageBox()
+            msg.setText("No COM port selected for serial connection...")
+            msg.exec()
+        else:
+            self.view(self.sender().text())
 
     # method called by button
     def chosen_hand_button_clicked(self):
-
-        # if button is checked
         if self.chosen_hand_button.isChecked():
-
-            # setting background color to light-blue
             self.chosen_hand_button.setStyleSheet("background-color : lightblue")
             self.chosen_hand_button.setText("Left Hand")
             self.chosen_hand = "left_hand"
 
-        # if it is unchecked
         else:
-
-            # set background color back to light-grey
             self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
             self.chosen_hand_button.setText("Right Hand")
             self.chosen_hand = "right_hand"
+
+    def mode_change_index_changed(self, changedToIndex):
+        self.activeFrame.hide()
+        self.frames[changedToIndex].show()
+        self.activeFrame = self.frames[changedToIndex]
+
+    def com_port_changed(self, changedToIndex):
+        self.com_port = self.available_ports[changedToIndex]
+
+    def candidate_text_changed(self, changedTo):
+        self.candidate_identifier = changedTo
+
+    def redo_calibration(self):
+        s = serial.Serial(self.com_port, BAUD_RATE, timeout=1)
+        s.write(np.uint16(REDO_CALIB).tobytes())
+        s.close()
 
     def initUI(self):
         # Connecting quit function
@@ -116,95 +129,123 @@ class MyWindow(QMainWindow):
         # QT display
         w = QtWidgets.QWidget()
         self.setCentralWidget(w)
-        grid = QtWidgets.QGridLayout(w)
-
-        # Initialize buttons on display
         self.setGeometry(200, 200, 300, 300)
+
+        general_grid = QtWidgets.QGridLayout(w)
+
+        # General buttons
+        self.port_dropdown = QComboBox()
+        self.port_dropdown.addItems(self.available_ports)
+        self.port_dropdown.currentIndexChanged.connect(self.com_port_changed)
+        general_grid.addWidget(self.port_dropdown)
+
+        self.calibration_button = QPushButton("Redo calibration", self)
+        self.calibration_button.clicked.connect(self.redo_calibration)
+        self.calibration_button.setStyleSheet("background-color : red; color: white")
+        general_grid.addWidget(self.calibration_button)
+
+        general_grid.addWidget(QLabel("Candidate identifier:"))
+        self.candidate_textfield = QLineEdit()
+        self.candidate_textfield.setText(self.candidate_identifier)
+        self.candidate_textfield.textChanged.connect(self.candidate_text_changed)
+        general_grid.addWidget(self.candidate_textfield)
+
+        self.control_data_button = QPushButton(self)
+        self.control_data_button.setText("control_data")
+        self.control_data_button.clicked.connect(self.data_button_clicked)
+        general_grid.addWidget(self.control_data_button)
+        
+        self.mode_dropdown = QComboBox()
+        self.mode_dropdown.addItems(["Gestures", "Digits", "Letters"])
+        self.mode_dropdown.currentIndexChanged.connect(self.mode_change_index_changed)
+        general_grid.addWidget(self.mode_dropdown)
+
         self.chosen_hand_button = QPushButton("Right Hand", self)
         self.chosen_hand_button.setCheckable(True)
         self.chosen_hand_button.clicked.connect(self.chosen_hand_button_clicked)
         self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
-        grid.addWidget(self.chosen_hand_button)
+        general_grid.addWidget(self.chosen_hand_button)
 
-        self.control_data_button = QPushButton(self)
-        self.control_data_button.setText("control_data")
-        self.control_data_button.clicked.connect(self.control_data_button_clicked)
-        grid.addWidget(self.control_data_button)
+        gestures = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "clockwise", "counter_clockwise", "tap", "double_tap", "zoom_in", "zoom_out"]
+        digits = [("digit_"+str(i)) for i in range(10)]
+        characters = [("char_" + chr(i)) for i in range(ord('A'), ord('J')+1)]
 
-        self.swipe_left_button = QPushButton(self)
-        self.swipe_left_button.setText("swipe_left")
-        self.swipe_left_button.clicked.connect(self.swipe_left_button_clicked)
-        grid.addWidget(self.swipe_left_button)
+        #Grids
+        gestures_frame = self.generate_frame(gestures)
+        digits_frame = self.generate_frame(digits)
+        characters_frame = self.generate_frame(characters)
 
-        self.swipe_right_button = QPushButton(self)
-        self.swipe_right_button.setText("swipe_right")
-        self.swipe_right_button.clicked.connect(self.swipe_right_button_clicked)
-        grid.addWidget(self.swipe_right_button)
+        #put grids in global object
+        self.frames = [gestures_frame, digits_frame, characters_frame]
 
-        self.swipe_up_button = QPushButton(self)
-        self.swipe_up_button.setText("swipe_up")
-        self.swipe_up_button.clicked.connect(self.swipe_up_button_clicked)
-        grid.addWidget(self.swipe_up_button)
+        #Hide frames not used first
+        self.activeFrame = gestures_frame
+        digits_frame.hide()
+        characters_frame.hide()
 
-        self.swipe_down_button = QPushButton(self)
-        self.swipe_down_button.setText("swipe_down")
-        self.swipe_down_button.clicked.connect(self.swipe_down_button_clicked)
-        grid.addWidget(self.swipe_down_button)
+        general_grid.addWidget(gestures_frame)
+        general_grid.addWidget(digits_frame)
+        general_grid.addWidget(characters_frame)
 
-        self.clockwise_button = QPushButton(self)
-        self.clockwise_button.setText("clockwise")
-        self.clockwise_button.clicked.connect(self.clockwise_button_clicked)
-        grid.addWidget(self.clockwise_button)
+        
 
-        self.counterclockwise_button = QPushButton(self)
-        self.counterclockwise_button.setText("counterclockwise")
-        self.counterclockwise_button.clicked.connect(self.counterclockwise_button_clicked)
-        grid.addWidget(self.counterclockwise_button)
 
-        self.tap_button = QPushButton(self)
-        self.tap_button.setText("tap")
-        self.tap_button.clicked.connect(self.tap_button_clicked)
-        grid.addWidget(self.tap_button)
+    def generate_frame(self, grid_items):
+        grid = QtWidgets.QGridLayout()
+        # Initialize buttons on display
 
-        self.double_tap_button = QPushButton(self)
-        self.double_tap_button.setText("double_tap")
-        self.double_tap_button.clicked.connect(self.double_tap_button_clicked)
-        grid.addWidget(self.double_tap_button)
-
-        self.zoom_in_button = QPushButton(self)
-        self.zoom_in_button.setText("zoom_in")
-        self.zoom_in_button.clicked.connect(self.zoom_in_button_clicked)
-        grid.addWidget(self.zoom_in_button)
-
-        self.zoom_out_button = QPushButton(self)
-        self.zoom_out_button.setText("zoom_out")
-        self.zoom_out_button.clicked.connect(self.zoom_out_button_clicked)
-        grid.addWidget(self.zoom_out_button)
+        for label in grid_items:
+            button = QPushButton(self)
+            button.setText(label)
+            button.clicked.connect(self.data_button_clicked)
+            grid.addWidget(button)
+        
+        frame = QtWidgets.QFrame()
+        frame.setLayout(grid)
+        return frame
 
     def closeEvent(self, event):
         event.accept()
 
     def view(self, gesture):
-
+        
         # Select frequency and duration of beep
         frequency = 500  # Set Frequency To 2500 Hertz
         duration = 500  # Set Duration To 1000 ms == 1 second
-        #winsound.Beep(frequency, duration)
+
+        if winsound is not None:
+            winsound.Beep(frequency, duration)
 
         self.count += 1
         print("starting ", self.count)
 
-        # make sure the 'COM#' is set according the Windows Device Manager
-        ser = serial.Serial(SERIAL_PORT, 19200, timeout=1)
+        # Set the number of samples we collect
+        if gesture == "control_data":
+            num_readings = 1000
+        else:
+            num_readings = 500
+
+        ser = serial.Serial(self.com_port, BAUD_RATE, timeout=1)
+
+        # Construct data to send over to Arduino
+        header = np.uint16(MEAS_START)
+        number = np.uint32(num_readings)
+        data = header.tobytes() + number.tobytes()
+        print(len(data))
+        ser.write(bytes(data))
+        
+        # The first value we get back is the calibration value
+        while not ser.closed and ser.in_waiting == 0:
+            pass
+
+        resistor_value = ser.readline()
+        print("The resistor value is: %s" % int(resistor_value))
+        
         reader = ReadLine(ser)
         time.sleep(2)
 
         # Sampling the data
         self.data = []
-        if gesture == "control":
-            num_readings = 100
-        else:
-            num_readings = 500
         for i in range(num_readings):
             line = reader.readline()  # read a byte string
             if line:
@@ -217,26 +258,33 @@ class MyWindow(QMainWindow):
         plt.plot(self.data)
         plt.xlabel('Time')
         plt.ylabel('Photodiode Reading')
-        plt.title(f'candidate {self.candidate_number}')
+        plt.title(f'candidate {self.candidate_identifier}')
         plt.show()
-
-        if SAVE_PLOT:
-            plt.savefig(f"src/data_collection/data/{gesture}/{self.chosen_hand}/candidate_{self.candidate_number}.png")
 
         # Saving data
         if gesture == "control":
-            path = f"src/data_collection/data/{gesture}"
+            path = os.path.join(DATA_ROOT_PATH, gesture)
         else:
-            path = f"src/data_collection/data/{gesture}/{self.chosen_hand}"
+            path = os.path.join(DATA_ROOT_PATH, gesture, self.chosen_hand)
 
         # Create directory if it doesn't exist yet
-        if (not os.path.exists(path)):
+        if not os.path.exists(path):
             os.makedirs(path)
 
-        with open(f"{path}/candidate_{self.candidate_number}.pickle", "ab+") as file:
-            pickle.dump(np.array(self.data), file)
+        data_dict = {
+            'data': np.array(self.data),
+            'gesture': gesture,
+            'hand': self.chosen_hand,
+            'candidate': self.candidate_identifier,
+            'resistor_value': resistor_value
+        }
 
-        #np.savetxt(f"{path}/candidate_{self.candidate_number}.csv", np.array(self.data, dtype=int), delimiter=',')
+        with open(os.path.join(path, f"candidate_{self.candidate_identifier}.pickle"), "ab+") as file:
+            pickle.dump(data_dict, file)
+
+        if SAVE_PLOT:
+            plt.savefig(os.path.join(path, f"candidate_{self.candidate_identifier}_{self.count}.png"))
+
 
         print("done ", self.count)
 

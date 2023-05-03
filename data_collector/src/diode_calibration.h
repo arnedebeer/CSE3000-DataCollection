@@ -90,6 +90,10 @@ class LightIntensityRegulator {
       return this->powerSet[this->resistor_index].value;
     }
 
+    void reconfigure() {
+      this->initialConfiguration();
+    }
+
   private:
     int resistor_index;
     int size;
