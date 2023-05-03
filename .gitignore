@@ -1,2 +1,13 @@
 venv
 .venv
+
+
+.vscode
+
+# Gitignore for PlatformIO
+data_collector/.pio
+data_collector/.vscode/.browse.c_cpp.db*
+data_collector/.vscode/c_cpp_properties.json
+data_collector/.vscode/launch.json
+data_collector/.vscode/ipch
+.vscode/c_cpp_properties.json
