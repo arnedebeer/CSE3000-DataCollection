@@ -78,8 +78,10 @@ void measurementCommand() {
 const char RECALIBRATE = 0xAC;
 void recalibrateCommand () {
     setLedOrange();
-    regulator->reconfigure();
-
+    // regulator->reconfigure();
+    // Create a new light regulator.
+    regulator = new LightIntensityRegulator();
+  
     // Return the resistance that has been set.
     Serial.println(regulator->get_resistance()); 
 }
