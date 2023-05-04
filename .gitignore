@@ -3,6 +3,7 @@ venv
 
 
 .vscode
+**/.python-version
 
 # Gitignore for PlatformIO
 data_collector/.pio
