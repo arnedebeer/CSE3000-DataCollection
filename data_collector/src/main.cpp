@@ -38,8 +38,8 @@ void printRegulatorValue() {
 
 void printValues() {
   int r0 = analogRead(A0);
-  int r1 = analogRead(A3);
-  int r2 = analogRead(A4);
+  int r1 = analogRead(A1);
+  int r2 = analogRead(A2);
 
   Serial.print(r0);
   Serial.print(", ");
