@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     from collector import Collector
 
 import pickle
+import numpy as np
 import matplotlib.pyplot as plotter
 import os
 
@@ -30,7 +31,7 @@ class GestureData:
 
     # Add a sample to the data.
     def add_sample(self, r0, r1, r2) -> None:
-        self.data.append([int(r0), int(r1), int(r2)])
+        self.data.append([r0, r1, r2])
 
     # Uses a collctor to read all the samples retrieved from the serial port.
     def collect(self, collector: Collector, log=False) -> None:
@@ -64,6 +65,7 @@ class GestureData:
             "sample_rate": self.sample_rate,
             "duration": self.duration,
             "samples": self.samples,
+            "data": np.array(self.data)
         }
 
         # Create the path to the file
