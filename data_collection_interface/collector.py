@@ -34,7 +34,9 @@ class Collector:
         self.set_sample_rate(sample_rate)
 
         # How many samples we expect to get to fill the time.
-        data = GestureData(self.resistance, sample_rate, duration)
+        data = GestureData(resistance=self.resistance, 
+                           sample_rate=sample_rate, 
+                           duration=duration)
         samples = data.samples
         print("Sampling for", duration, "seconds at", sample_rate, "Hz. Expecting", samples, "samples.", "Resistance is", self.resistance, "Ohms.")
 
@@ -144,8 +146,11 @@ if __name__ == "__main__":
     # collector.recalibrate()
     # collector.set_sample_rate(100)
 
-    data = collector.measure(sampling_rate=2000, duration=1, log=True)
+    data = collector.measure(sample_rate=500, duration=2, log=True)
     
+    # Set metadata for this gesture.
+    data.set_metadata(candidate="Winstijn", target_gesture="#2", gesture_type="digit")
+
     data.plot(candidate="Winstijn", gesture="#2")
     
     collector.close()

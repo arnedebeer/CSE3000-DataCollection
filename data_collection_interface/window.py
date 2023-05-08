@@ -8,7 +8,7 @@ from util import serial_ports, auto_select_serial_port
 from collector import Collector
 from gesture_data import GestureData
 
-DEFAULT_CANDIDATE = "default_candidate"
+DEFAULT_CANDIDATE = "default"
 
 DATASET_FOLDER = "data/"
 
@@ -82,12 +82,19 @@ class CollectionWindow(QMainWindow):
         collector = self.collector()
         collector.resistance = self.resistance # Set the resistance, to avoid recalibrating.
 
-        collector.measure(duration=self.sample_duration / 1000, sample_rate=self.sample_rate)
+        data = collector.measure(duration=self.sample_duration / 1000, sample_rate=self.sample_rate)
         print("========== End of measurement ===========\n")
 
-        # TODO: Finish measurement, show data, etc.
-        # TODO: Create method to save metadata to GestureData.
-        # TODO: Save it in a special directory structure.
+        # Set metadata for the data.
+        data.set_metadata(candidate=self.candidate_identifier, 
+                          hand=self.chosen_hand, 
+                          gesture_type=self.gesture_type, 
+                          target_gesture=gesture)
+
+        data.save_to_file() # Save the data to a file.
+        data.plot() # Plot the data.
+
+
 
     def initializeUI(self):
         self.setWindowTitle("Data Collection Interface")
