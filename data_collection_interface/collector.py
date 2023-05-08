@@ -2,6 +2,7 @@ import time
 import numpy as np
 from serial import Serial
 from util import auto_select_serial_port
+from gesture_data import GestureData
 
 # Command bytes to send to the device.
 MEASUREMENT_START = 0xAB
@@ -16,13 +17,13 @@ STANDARD_DURATION = 1 # Seconds to listen.
 class Collector: 
     
     
-    def __init__(self, serial_port: str = auto_select_serial_port(), baud_rate: int = 19200) -> None:
+    def __init__(self, serial_port: str = auto_select_serial_port(), baud_rate: int = 19200):
         print("Connecting to gesture device at serial port", serial_port, "at baud rate", baud_rate)
         self.connection = Serial(serial_port, baud_rate)
         self.resistance = 0
 
 
-    def start_measurement(self, duration=STANDARD_DURATION, sampling_rate=STANDARD_SAMPLING_RATE, log=False) -> None:
+    def measure(self, duration=STANDARD_DURATION, sample_rate=STANDARD_SAMPLING_RATE, log=False) -> GestureData:
         print("Starting measurement on device")
 
         if (self.resistance == 0):
@@ -30,41 +31,39 @@ class Collector:
             self.recalibrate()
         
         # Set the samping rate.
-        self.set_sample_rate(sampling_rate)
+        self.set_sample_rate(sample_rate)
 
         # How many samples we expect to get to fill the time.
-        samples = int(duration * sampling_rate)
-        print("Sampling for", duration, "seconds at", sampling_rate, "Hz. Expecting", samples, "samples.", "Resistance is", self.resistance, "Ohms.")
+        data = GestureData(self.resistance, sample_rate, duration)
+        samples = data.samples
+        print("Sampling for", duration, "seconds at", sample_rate, "Hz. Expecting", samples, "samples.", "Resistance is", self.resistance, "Ohms.")
 
         # Send the start measurement command.
         self.write_bytes(MEASUREMENT_START, np.uint32(samples))
-    
+
         # Time we started the measurement.
         start = time.time()
 
-        # Get all measurements samples from the serial port.
-        for i in range(samples):
-            # Read a line from the serial port.
-            # Get the binary result.
-            r0 = self.readuint16()
-            r1 = self.readuint16()
-            r2 = self.readuint16()
-            if log:
-                print("[Measurement " + str(i) + "] " + str(r0) + ", " + str(r1) + ", " + str(r2))
+        # Read all the data using the collector.
+        data.collect(self, log=log)
 
         diff = time.time() - start
+
         print("Measurement took", diff, "seconds. (expected " + str(duration) + " seconds)")
-        print("Achieved sampling rate of", samples / diff, "Hz. (expected " + str(sampling_rate) + " Hz)  ")
+        print("Achieved sampling rate of", samples / diff, "Hz. (expected " + str(sample_rate) + " Hz)  ")
 
         # Confirm that the measurement is done.
         self.readline(log=True)
 
+        return data
 
-    def recalibrate(self) -> None:
+
+    def recalibrate(self) -> int:
         print("Recalibrating light sensitivty of device.")
         self.write_bytes(RECALIBRATE) 
         self.resistance = self.readint()
         print("Resistance set to", self.resistance, "Ohms.")
+        return self.resistance
 
 
     def set_sample_rate(self, frequency: int) -> None:
@@ -79,7 +78,6 @@ class Collector:
         # Convert all arguments to bytes.
         all_bytes = list(map(self.to_bytes, list(args)))
 
-        # print(all_bytes)
         # Concatenate all the bytes.
         all_bytes = b"".join(all_bytes)
 
@@ -100,7 +98,7 @@ class Collector:
             return arg.tobytes()
         
         # Just try to send it as bytes.
-        return bytes(args)
+        return bytes(arg)
 
     def write(self, data) -> None: 
         # print("Will write the following over serial:", data)
@@ -143,8 +141,11 @@ class Collector:
 if __name__ == "__main__":
     collector = Collector()
 
-    collector.recalibrate()
-    collector.set_sample_rate(100)
+    # collector.recalibrate()
+    # collector.set_sample_rate(100)
 
-    collector.start_measurement(sampling_rate=100, duration=10, log=True)
+    data = collector.measure(sampling_rate=2000, duration=1, log=True)
+    
+    data.plot(candidate="Winstijn", gesture="#2")
+    
     collector.close()
