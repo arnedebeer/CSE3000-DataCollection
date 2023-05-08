@@ -33,8 +33,8 @@ void readPhotodiodes() {
   const unsigned long start = micros();
 
   uint16_t r0 = (uint16_t) analogRead(A0);
-  uint16_t r1 = (uint16_t) analogRead(A3);
-  uint16_t r2 = (uint16_t) analogRead(A4);
+  uint16_t r1 = (uint16_t) analogRead(A1);
+  uint16_t r2 = (uint16_t) analogRead(A2);
 
   #ifdef BINARY_RESPONE
     Serial.write((char*) &r0, sizeof(uint16_t));
