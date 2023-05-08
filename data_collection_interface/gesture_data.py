@@ -4,21 +4,29 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collector import Collector
 
+import pickle
 import matplotlib.pyplot as plotter
 import os
 
+COLLECTION_PATH = "./dataset"
 
 class GestureData:
 
-    def __init__(self, resistance: int, sampling_rate: int, duration: float, data = [], 
-                    candidate: str = "Unknown Candidate", target_gesture: str = "Unknown Gesture") -> None:
-        self.candidate = candidate
-        self.target_gesture = target_gesture
+    def __init__(self, resistance: int, sample_rate: int, duration: float, data = []) -> None:
         self.resistance = resistance
-        self.sampling_rate = sampling_rate
+        self.sample_rate = sample_rate
         self.duration = duration
-        self.samples = int(duration * sampling_rate)
+        self.samples = int(duration * sample_rate)
+        self.set_metadata() # Just initialize the metadata values.
         self.data = data
+
+    def set_metadata(self, candidate: str = "Unknown Canidate", hand: str = "unknown",
+                     gesture_type="unknown", target_gesture="unknown") -> None:
+        self.candidate = candidate
+        self.hand = hand
+        self.gesture_type = gesture_type
+        self.target_gesture = target_gesture
+
 
     # Add a sample to the data.
     def add_sample(self, r0, r1, r2) -> None:
@@ -38,14 +46,44 @@ class GestureData:
             if log:
                 print("[Measurement " + str(i) + "] " + str(r0) + ", " + str(r1) + ", " + str(r2))
 
+    def get_directory_path(self, folder=COLLECTION_PATH) -> str:
+        return os.path.join(folder, self.gesture_type, self.target_gesture, self.hand)
+
+    # Getter for candidate name without spaces
+    def get_formatted_candidate(self) -> str:
+        return self.candidate.lower().replace(" ", "_")
+
+    def save_to_file(self, folder=COLLECTION_PATH) -> None:
+        # Create the directory if it does not exist.
+        data_dict = {
+            "candidate": self.candidate,
+            "hand": self.hand,
+            "gesture_type": self.gesture_type,
+            "target_gesture": self.target_gesture,
+            "resistance": self.resistance,
+            "sample_rate": self.sample_rate,
+            "duration": self.duration,
+            "samples": self.samples,
+        }
+
+        # Create the path to the file
+        candidate = self.get_formatted_candidate()
+        directory = self.get_directory_path(folder)
+        path = os.path.join(directory, "candidate_" + candidate + ".pickle")
+        
+        create_directories(path) # Create the directories if they do not exist.
+        print("Saving gesture data to file at: " + str(path))
+
+        with open(path, "ab+") as file:
+            pickle.dump(data_dict, file)
 
     # Plots the data contained in the GestureData on a graph.
-    def plot(self, show=True, candidate = None, gesture = None) -> None:
+    def plot(self, show=True, candidate = None, target_gesture = None) -> None:
         # Set metadata of the plot.
-        if (candidate != None):
-            self.candidate = candidate
-        if (gesture != None):
-            self.target_gesture = gesture
+        if (candidate == None):
+            candidate = self.candidate
+        if (target_gesture == None):
+            target_gesture = self.target_gesture
 
         # Create the plot, together with a section for the metadata.
         fig, plt = plotter.subplots(1)
@@ -59,15 +97,15 @@ class GestureData:
         plt.set_ylabel("Photodiode reading")
 
         # Set the metadata
-        # fig.text(0.1,0.05,'Sampling Rate: ' + str(self.sampling_rate) + 'Hz')
+        # fig.text(0.1,0.05,'Sampling Rate: ' + str(self.sample_rate) + 'Hz')
         # fig.text(0.38,0.05,'Time: ' + str(self.duration) + 's')
         # fig.text(0.5,0.05,'Resistance: ' + str(self.resistance / 1000) + 'kOhm')
-        fig.text(0.1,0.15,'Sampling Rate: ' + str(self.sampling_rate) + 'Hz')
+        fig.text(0.1,0.15,'Sampling Rate: ' + str(self.sample_rate) + 'Hz')
         fig.text(0.1,0.10,'Time: ' + str(self.duration) + 's')
         fig.text(0.1,0.05,'Resistance: ' + str(self.resistance / 1000) + 'kOhm')
 
         # Set the title of the plot.
-        title = self.target_gesture + " by " + self.candidate
+        title = target_gesture + " by " + candidate
         plt.set_title(title) 
 
         # Save location of the image.
