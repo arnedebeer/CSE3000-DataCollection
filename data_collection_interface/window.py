@@ -29,7 +29,7 @@ DEFAULTS_PER_GESTURE_TYPE = {
         "sample_duration": 1000,
     },
     "digits": {
-        "sample_rate": 500,
+        "sample_rate": 1000,
         "sample_duration": 2000,
     },
     "letters": {
@@ -42,6 +42,13 @@ SAMPLE_RATES = [100, 250, 500, 750, 1000, 1250, 1500]
 SAMPLE_DURATIONS =  [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000]
 
 class CollectionWindow(QMainWindow):
+
+    sample_rate: int
+    serial_port: str
+    candidate_identifier: str
+    chosen_hand: str # Change this to an enum later.
+    gesture_type: str
+    resistance: int
 
     def __init__(self):
         super(CollectionWindow, self).__init__()
@@ -59,7 +66,7 @@ class CollectionWindow(QMainWindow):
         self.gesture_type = DEFAULT_GESTURE_TYPE
 
         self.resistance = None # Has not been calibrated yet.
-        
+
         # Initialize the window.
         self.initializeUI()
 
@@ -83,6 +90,7 @@ class CollectionWindow(QMainWindow):
         collector.resistance = self.resistance # Set the resistance, to avoid recalibrating.
 
         data = collector.measure(duration=self.sample_duration / 1000, sample_rate=self.sample_rate)
+        print(len(data.data))
         print("========== End of measurement ===========\n")
 
         # Set metadata for the data.
@@ -94,6 +102,7 @@ class CollectionWindow(QMainWindow):
         data.save_to_file() # Save the data to a file.
         data.plot() # Plot the data.
 
+        self.last_gesture_data = data
 
 
     def initializeUI(self):
@@ -251,11 +260,26 @@ class CollectionWindow(QMainWindow):
     def create_calibration_button(self):
         calibration_button = QPushButton("Recalibrate Sensitivty", self)
         calibration_button.clicked.connect(self.recalibrate)
-        calibration_button.setStyleSheet("background-color : red; color: white")
+        calibration_button.setStyleSheet("background-color : grey; color: white")
 
         # Add to the general grid.
         self._general_grid.addWidget(calibration_button)
 
+    # def create_remove_last_button(self):
+    #     remove_last_button = QPushButton("Remove Last Entry", self)
+    #     remove_last_button.clicked.connect(self.remove_last_gesture)
+    #     remove_last_button.setStyleSheet("background-color : red; color: white")
+
+    #     # Add to the general grid.
+    #     self._general_grid.addWidget(remove_last_button)
+
+    # def remove_last_gesture(self):
+    #     if (self.last_gesture_data is None):
+    #         print("No last gesture data to remove.")
+    #         return
+        
+    #     self.last_gesture_data.remove_from_dataset()
+    #     self.last_gesture_data = None # Set to none so we can't remove it again.
 
     def data_button_clicked(self):
         if self.serial_port is None:
