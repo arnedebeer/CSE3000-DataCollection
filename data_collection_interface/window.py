@@ -7,10 +7,13 @@ import signal
 from util import serial_ports, auto_select_serial_port
 from collector import Collector
 from gesture_data import GestureData
+import time
 
 DEFAULT_CANDIDATE = "default"
 
 DATASET_FOLDER = "data/"
+
+START_DELAY = 500 # Delay before measurment starts in ms.
 
 # Whole gesture selection UI is created from these constants.
 GESTURE_TYPES = ["gestures", "digits", "letters"]
@@ -30,7 +33,7 @@ DEFAULTS_PER_GESTURE_TYPE = {
     },
     "digits": {
         "sample_rate": 1000,
-        "sample_duration": 2000,
+        "sample_duration": 1500,
     },
     "letters": {
         "sample_rate": 500,
@@ -79,9 +82,12 @@ class CollectionWindow(QMainWindow):
     def collector(self):
         return Collector(self.serial_port)
     
-    def measure(self, gesture):
+    def measure(self, gesture, save=True):
         if (self.resistance is None):
             self.recalibrate() # Only recalibrate if we haven't already.
+
+        # Sleep for a bit before starting the measurement.
+        time.sleep(START_DELAY / 1000)
 
         print("\n========== Start of measurement ===========")
         print("[UI] Collecting data for candidate '{}' with '{}' for gesture '{}' ({}) at sample rate '{} Hz' with '{} kOhm' resistance for '{} ms'".format
@@ -99,11 +105,9 @@ class CollectionWindow(QMainWindow):
                           gesture_type=self.gesture_type, 
                           target_gesture=gesture)
 
-        data.save_to_file() # Save the data to a file.
+        if save:
+            data.save_to_file() # Save the data to a file.
         data.plot() # Plot the data.
-
-        self.last_gesture_data = data
-
 
     def initializeUI(self):
         self.setWindowTitle("Data Collection Interface")
@@ -128,6 +132,7 @@ class CollectionWindow(QMainWindow):
         self.create_gesture_type_dropdown()
         self.create_sample_rate_dropdown()
         self.create_sample_duration_dropdown()
+        self.create_test_button()
         self.create_gesture_buttons()
 
     def create_dropdown(self, label: str, options: list, field: str, on_change=None) -> QComboBox :
@@ -265,6 +270,15 @@ class CollectionWindow(QMainWindow):
         # Add to the general grid.
         self._general_grid.addWidget(calibration_button)
 
+    def create_test_button(self):
+        test_button = QPushButton("Self-test", self)
+        test_button.clicked.connect(lambda: self.measure("test", False))
+        test_button.setStyleSheet("background-color: purple; color: white")
+
+        # Add to the general grid.
+        self._general_grid.addWidget(test_button)
+
+
     # def create_remove_last_button(self):
     #     remove_last_button = QPushButton("Remove Last Entry", self)
     #     remove_last_button.clicked.connect(self.remove_last_gesture)
@@ -301,7 +315,6 @@ class CollectionWindow(QMainWindow):
 
     # Allow closing the window.
     def closeEvent(self, event):
-        # TODO: Wait for serial thread to finish. 
         event.accept()
 
 if __name__ == "__main__":
