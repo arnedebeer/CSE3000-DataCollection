@@ -160,7 +160,7 @@ class GestureData:
 
 
         # Save location of the image.
-        path = "gestures/" + title.lower().replace(" ", "_") + ".png"
+        path = "plots/" + title.lower().replace(" ", "_") + ".png"
         create_directories(path)
         plotter.savefig(path)
 
