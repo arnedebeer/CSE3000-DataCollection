@@ -62,18 +62,18 @@ class CollectionWindow(QMainWindow):
 
         self.candidate_identifier = DEFAULT_CANDIDATE
         self.chosen_hand = "right"
+        self.resistance = None # Has not been calibrated yet.
 
         # Set the default gesture types and the defaults related to them.
         self.gesture_type = DEFAULT_GESTURE_TYPE
 
-        self.resistance = None # Has not been calibrated yet.
-
-         # Set the default sample settings in the UI.
-        self.set_default_sample_settings()
-
         # Initialize the window.
         self.initializeUI()
-   
+
+        # Set the default sample settings in the UI.
+        self.set_default_sample_settings()
+
+
 
     def recalibrate(self):
         self.resistance = self.collector().recalibrate()
@@ -146,10 +146,11 @@ class CollectionWindow(QMainWindow):
         dropdown.addItems(options)
         dropdown.currentIndexChanged.connect(dropdown_changed)
 
-        # Set the initial value of the dropdown.
-        val = getattr(self, field) # Get the value of the field.
-        default_index = options.index(val) if val in options else 0 # Look for the index of the value in the options.
-        dropdown.setCurrentIndex(default_index) # Set the dropdown to the index.
+        # Set the initial value of the dropdown to the value of the field
+        if (hasattr(self, field)): # Only if the field already exists.
+            val = getattr(self, field) # Get the value of the field.
+            default_index = options.index(val) if val in options else 0 # Look for the index of the value in the options.
+            dropdown.setCurrentIndex(default_index) # Set the dropdown to the index.
 
         # Add to the general grid.
         self._general_grid.addWidget(QLabel(label))
@@ -171,7 +172,6 @@ class CollectionWindow(QMainWindow):
             self.sample_duration = SAMPLE_DURATIONS[index]
 
         self.sample_duration_dropdown = self.create_dropdown("Sample Duration: (millisconds)", list(map(lambda x: str(x) + " ms", SAMPLE_DURATIONS)), "sample_duration", change_sample_duration)
-
 
     def set_default_sample_settings(self):
         # Set the default sample rate and duration for the current gesture type.
