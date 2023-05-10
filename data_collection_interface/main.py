@@ -20,7 +20,7 @@ GESTURES = {
     "digits": ["#" + str(i) for i in range(10)], # #1, #2, #3, etc.
     "letters": [("char_" + chr(i)) for i in range(ord('A'), ord('J')+1)]
 }
-DEFAULT_GESTURE_TYPE = "digits" # Easy for testing.
+DEFAULT_GESTURE_TYPE = "gestures" # Easy for testing.
 
 # The default sample rate and duration for each gesture type.\
 # Make sure these values are also defined in the arrays below.
@@ -68,11 +68,12 @@ class CollectionWindow(QMainWindow):
 
         self.resistance = None # Has not been calibrated yet.
 
+         # Set the default sample settings in the UI.
+        self.set_default_sample_settings()
+
         # Initialize the window.
         self.initializeUI()
-
-        # Set the default sample settings in the UI.
-        self.set_default_sample_settings()
+   
 
     def recalibrate(self):
         self.resistance = self.collector().recalibrate()
