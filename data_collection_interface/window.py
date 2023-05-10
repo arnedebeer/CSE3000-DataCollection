@@ -18,7 +18,7 @@ START_DELAY = 500 # Delay before measurment starts in ms.
 # Whole gesture selection UI is created from these constants.
 GESTURE_TYPES = ["gestures", "digits", "letters"]
 GESTURES = { 
-    "gestures": ["fist", "wave", "pinch", "palm", "flex", "point"],
+    "gestures":  ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "clockwise", "counter_clockwise", "tap", "double_tap", "zoom_in", "zoom_out"],
     "digits": ["#" + str(i) for i in range(10)], # #1, #2, #3, etc.
     "letters": [("char_" + chr(i)) for i in range(ord('A'), ord('J')+1)]
 }
