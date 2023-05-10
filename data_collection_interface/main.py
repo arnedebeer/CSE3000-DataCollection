@@ -1,194 +1,250 @@
+# New version of the window.
+
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QPushButton, QComboBox, QLineEdit, QLabel, QMessageBox
 import sys
-import serial
+from util import serial_ports, auto_select_serial_port
+from collector import Collector
 import time
-import matplotlib.pyplot as plt
-import pickle
-import numpy as np
-import os
-from util import serial_ports
-import threading
 
-try:
-    import winsound
-except ImportError:
-    winsound = None
+DEFAULT_CANDIDATE = "default"
 
-BAUD_RATE = 19200
-CANDIDATE_DEFAULT_NUMBER = 1
-SAVE_PLOT = True
-DATA_ROOT_PATH = "data_collection_interface/data"
+DATASET_FOLDER = "data/"
 
-# Serial control bits
-MEAS_START = 0xAB
-REDO_CALIB = 0xAC
+START_DELAY = 500 # Delay before measurment starts in ms.
 
-class ReadLine:
-    def __init__(self, s):  
-        self.buf = bytearray()
-        self.s = s
+# Whole gesture selection UI is created from these constants.
+GESTURE_TYPES = ["gestures", "digits", "letters"]
+GESTURES = { 
+    "gestures":  ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "clockwise", "counter_clockwise", "tap", "double_tap", "zoom_in", "zoom_out"],
+    "digits": ["#" + str(i) for i in range(10)], # #1, #2, #3, etc.
+    "letters": [("char_" + chr(i)) for i in range(ord('A'), ord('J')+1)]
+}
+DEFAULT_GESTURE_TYPE = "digits" # Easy for testing.
 
-    def readline(self):
-        i = self.buf.find(b"\n")
-        if i >= 0:
-            r = self.buf[:i + 1]
-            self.buf = self.buf[i + 1:]
-            return r
-        while True:
-            i = max(1, min(2048, self.s.in_waiting))
-            data = self.s.read(i)
-            i = data.find(b"\n")
-            if i >= 0:
-                r = self.buf + data[:i + 1]
-                self.buf[0:] = data[i + 1:]
-                return r
-            else:
-                self.buf.extend(data)
+# The default sample rate and duration for each gesture type.\
+# Make sure these values are also defined in the arrays below.
+DEFAULTS_PER_GESTURE_TYPE = {
+    "gestures": {
+        "sample_rate": 100,
+        "sample_duration": 1000,
+    },
+    "digits": {
+        "sample_rate": 1000,
+        "sample_duration": 1500,
+    },
+    "letters": {
+        "sample_rate": 500,
+        "sample_duration": 4000,
+    },
+}
 
-class ReadSerial(threading.Thread):
-    def __init__(self, serial: serial.Serial):
-        super().__init__()
-        self.serial = serial
+SAMPLE_RATES = [100, 250, 500, 750, 1000, 1250, 1500]
+SAMPLE_DURATIONS =  [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000]
 
-    def run(self) -> None:
-        print("Starting serial read thread")
-        while not self.serial.closed:
-            if self.serial.in_waiting > 0:
-                print(self.serial.read_all())
+class CollectionWindow(QMainWindow):
 
-
-class MyWindow(QMainWindow):
-    """Class used for collecting data from candidates.
-
-    The candidate number has to be selected and the Arduino with the three photodiodes must be connected with the
-    appropriate com port selected.
-    When run, a window will appear for every gesture. Once a button is clicked, the samples will be collected and saved
-    into the appropriate pickle file.
-    """
-
-    com_port = None
+    sample_rate: int
+    serial_port: str
+    candidate_identifier: str
+    chosen_hand: str # Change this to an enum later.
+    gesture_type: str
+    resistance: int
 
     def __init__(self):
-        super(MyWindow,self).__init__()
-        self.data = []
-        self.chosen_hand = "right_hand"
-        self.count = 0
+        super(CollectionWindow, self).__init__()
+
         self.available_ports = serial_ports()
+        self.sample_rate = 100
 
-        if len(self.available_ports):
-            self.com_port = self.available_ports[0]
+        # Select the default serial port.
+        self.serial_port = auto_select_serial_port()
 
-        # Change value to select the candidate number
-        self.candidate_identifier = str(CANDIDATE_DEFAULT_NUMBER)
+        self.candidate_identifier = DEFAULT_CANDIDATE
+        self.chosen_hand = "right"
 
-        self.initUI()
+        # Set the default gesture types and the defaults related to them.
+        self.gesture_type = DEFAULT_GESTURE_TYPE
 
+        self.resistance = None # Has not been calibrated yet.
 
-    def data_button_clicked(self):
-        if self.com_port is None:
-            msg = QMessageBox()
-            msg.setText("No COM port selected for serial connection...")
-            msg.exec()
-        else:
-            self.view(self.sender().text())
+        # Initialize the window.
+        self.initializeUI()
 
-    # method called by button
-    def chosen_hand_button_clicked(self):
-        if self.chosen_hand_button.isChecked():
-            self.chosen_hand_button.setStyleSheet("background-color : lightblue")
-            self.chosen_hand_button.setText("Left Hand")
-            self.chosen_hand = "left_hand"
+        # Set the default sample settings in the UI.
+        self.set_default_sample_settings()
 
-        else:
-            self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
-            self.chosen_hand_button.setText("Right Hand")
-            self.chosen_hand = "right_hand"
+    def recalibrate(self):
+        self.resistance = self.collector().recalibrate()
 
-    def mode_change_index_changed(self, changedToIndex):
-        self.activeFrame.hide()
-        self.frames[changedToIndex].show()
-        self.activeFrame = self.frames[changedToIndex]
+    def collector(self):
+        return Collector(self.serial_port)
+    
+    def measure(self, gesture, save=True):
+        if (self.resistance is None):
+            self.recalibrate() # Only recalibrate if we haven't already.
 
-    def com_port_changed(self, changedToIndex):
-        self.com_port = self.available_ports[changedToIndex]
+        # Sleep for a bit before starting the measurement.
+        time.sleep(START_DELAY / 1000)
 
-    def candidate_text_changed(self, changedTo):
-        self.candidate_identifier = changedTo
+        print("\n========== Start of measurement ===========")
+        print("[UI] Collecting data for candidate '{}' with '{}' for gesture '{}' ({}) at sample rate '{} Hz' with '{} kOhm' resistance for '{} ms'".format
+              (self.candidate_identifier, self.chosen_hand, gesture, self.gesture_type, self.sample_rate, self.resistance / 1000, self.sample_duration))
+        collector = self.collector()
+        collector.resistance = self.resistance # Set the resistance, to avoid recalibrating.
 
-    def redo_calibration(self):
-        s = serial.Serial(self.com_port, BAUD_RATE, timeout=1)
-        s.write(np.uint16(REDO_CALIB).tobytes())
-        s.close()
+        data = collector.measure(duration=self.sample_duration / 1000, sample_rate=self.sample_rate)
+        print(len(data.data))
+        print("========== End of measurement ===========\n")
 
-    def initUI(self):
+        # Set metadata for the data.
+        data.set_metadata(candidate=self.candidate_identifier, 
+                          hand=self.chosen_hand, 
+                          gesture_type=self.gesture_type, 
+                          target_gesture=gesture)
+
+        if save:
+            data.save_to_file() # Save the data to a file.
+        data.plot() # Plot the data.
+
+    def initializeUI(self):
+        self.setWindowTitle("Data Collection Interface")
+        # self.setGeometry(300, 300, 800, 600)
+
         # Connecting quit function
         quit = QAction("Quit", self)
         quit.triggered.connect(self.closeEvent)
-
+        
         # QT display
         w = QtWidgets.QWidget()
         self.setCentralWidget(w)
-        self.setGeometry(200, 200, 300, 300)
+        # self.setGeometry(200, 200, 300, 300)
 
-        general_grid = QtWidgets.QGridLayout(w)
+        self._general_grid = QtWidgets.QGridLayout(w)
 
-        # General buttons
-        self.port_dropdown = QComboBox()
-        self.port_dropdown.addItems(self.available_ports)
-        self.port_dropdown.currentIndexChanged.connect(self.com_port_changed)
-        general_grid.addWidget(self.port_dropdown)
+        # Create the different UI elements.
+        self.create_port_dropdown()
+        self.create_calibration_button()
+        self.create_hand_button()
+        self.create_input("Candidate name:", "candidate_identifier")
+        self.create_gesture_type_dropdown()
+        self.create_sample_rate_dropdown()
+        self.create_sample_duration_dropdown()
+        self.create_test_button()
+        self.create_gesture_buttons()
 
-        self.calibration_button = QPushButton("Redo calibration", self)
-        self.calibration_button.clicked.connect(self.redo_calibration)
-        self.calibration_button.setStyleSheet("background-color : red; color: white")
-        general_grid.addWidget(self.calibration_button)
+    def create_dropdown(self, label: str, options: list, field: str, on_change=None) -> QComboBox :
+        # Default dropdown changed function.
+        def dropdown_changed(changedToIndex):
+            setattr(self, field, options[changedToIndex])
+            if on_change is not None:
+                on_change(changedToIndex)
 
-        general_grid.addWidget(QLabel("Candidate identifier:"))
-        self.candidate_textfield = QLineEdit()
-        self.candidate_textfield.setText(self.candidate_identifier)
-        self.candidate_textfield.textChanged.connect(self.candidate_text_changed)
-        general_grid.addWidget(self.candidate_textfield)
+        # Create the dropdown.
+        dropdown = QComboBox()
+        dropdown.addItems(options)
+        dropdown.currentIndexChanged.connect(dropdown_changed)
 
-        self.control_data_button = QPushButton(self)
-        self.control_data_button.setText("control_data")
-        self.control_data_button.clicked.connect(self.data_button_clicked)
-        general_grid.addWidget(self.control_data_button)
+        # Set the initial value of the dropdown.
+        val = getattr(self, field) # Get the value of the field.
+        default_index = options.index(val) if val in options else 0 # Look for the index of the value in the options.
+        dropdown.setCurrentIndex(default_index) # Set the dropdown to the index.
+
+        # Add to the general grid.
+        self._general_grid.addWidget(QLabel(label))
+        self._general_grid.addWidget(dropdown)
+
+        return dropdown
+
+    def create_port_dropdown(self):
+        dropdown = self.create_dropdown("Serial Port:", self.available_ports, "serial_port")
+
+    def create_sample_rate_dropdown(self):
+        def change_sample_rate(index):
+            self.sample_rate = SAMPLE_RATES[index]
+
+        self.sample_rate_dropdown = self.create_dropdown("Sample Rate: (frequency)", list(map(lambda x: str(x) + " Hz", SAMPLE_RATES)), "sample_rate", change_sample_rate)
+
+    def create_sample_duration_dropdown(self):
+        def change_sample_duration(index):
+            self.sample_duration = SAMPLE_DURATIONS[index]
+
+        self.sample_duration_dropdown = self.create_dropdown("Sample Duration: (millisconds)", list(map(lambda x: str(x) + " ms", SAMPLE_DURATIONS)), "sample_duration", change_sample_duration)
+
+
+    def set_default_sample_settings(self):
+        # Set the default sample rate and duration for the current gesture type.
+        self.sample_rate = self.get_default("sample_rate")
+        self.sample_duration = self.get_default("sample_duration")
+
+        # Set the dropdowns to the right values if they exist.
+        if hasattr(self, "sample_rate_dropdown"):
+            self.sample_rate_dropdown.setCurrentIndex(SAMPLE_RATES.index(self.sample_rate))
+        if hasattr(self, "sample_duration_dropdown"):
+            self.sample_duration_dropdown.setCurrentIndex(SAMPLE_DURATIONS.index(self.sample_duration))
+
+    def create_gesture_type_dropdown(self):
+        def show_gesture_buttons(index):
+            self.show_gesture_buttons(index)
+            self.set_default_sample_settings()
+
+        self.create_dropdown(label="Gesture Type:", options=GESTURE_TYPES, field="gesture_type", on_change=show_gesture_buttons)
+
+    def create_input(self, label: str, field: str):
         
-        self.mode_dropdown = QComboBox()
-        self.mode_dropdown.addItems(["Gestures", "Digits", "Letters"])
-        self.mode_dropdown.currentIndexChanged.connect(self.mode_change_index_changed)
-        general_grid.addWidget(self.mode_dropdown)
+        def input_changed(changedTo):
+            # Get the attribute name from the field.
+            setattr(self, field, changedTo)
 
-        self.chosen_hand_button = QPushButton("Right Hand", self)
-        self.chosen_hand_button.setCheckable(True)
-        self.chosen_hand_button.clicked.connect(self.chosen_hand_button_clicked)
-        self.chosen_hand_button.setStyleSheet("background-color : lightgrey")
-        general_grid.addWidget(self.chosen_hand_button)
+        textfield = QLineEdit()
+        attr = getattr(self, field)
+        textfield.setText(attr)
+        textfield.textChanged.connect(input_changed)
 
-        gestures = ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "clockwise", "counter_clockwise", "tap", "double_tap", "zoom_in", "zoom_out"]
-        digits = [("digit_"+str(i)) for i in range(10)]
-        characters = [("char_" + chr(i)) for i in range(ord('A'), ord('J')+1)]
+        # Add to the general grid.
+        self._general_grid.addWidget(QLabel(label))
+        self._general_grid.addWidget(textfield)
+    
 
-        #Grids
-        gestures_frame = self.generate_frame(gestures)
-        digits_frame = self.generate_frame(digits)
-        characters_frame = self.generate_frame(characters)
+    def create_hand_button(self):
+        chosen_hand_button = QPushButton("Right Hand", self)
+        self.chosen_hand = "right_hand"
 
-        #put grids in global object
-        self.frames = [gestures_frame, digits_frame, characters_frame]
+        def chosen_hand_button_clicked():
+            if chosen_hand_button.isChecked():
+               chosen_hand_button.setStyleSheet("background-color : purple")
+               chosen_hand_button.setText("Left Hand")
+               self.chosen_hand = "left_hand"
+            else:
+               chosen_hand_button.setStyleSheet("background-color : orange")
+               chosen_hand_button.setText("Right Hand")
+               self.chosen_hand = "right_hand"
 
-        #Hide frames not used first
-        self.activeFrame = gestures_frame
-        digits_frame.hide()
-        characters_frame.hide()
-
-        general_grid.addWidget(gestures_frame)
-        general_grid.addWidget(digits_frame)
-        general_grid.addWidget(characters_frame)
-
+        chosen_hand_button.setCheckable(True)
+        chosen_hand_button.clicked.connect(chosen_hand_button_clicked)
+        chosen_hand_button.setStyleSheet("background-color : orange")
         
+        self._general_grid.addWidget(chosen_hand_button)
 
+    def show_gesture_buttons(self, index):
+        if not hasattr(self, "gesture_button_frames"):
+            return # Gesture buttons not initialized yet, do nothing.
+        
+        for frame in self.gesture_button_frames:
+            frame.hide()
+        self.active_frame = self.gesture_button_frames[index]
+        self.active_frame.show()
+
+    def create_gesture_buttons(self):
+        # Create all frames for all the gesture types.
+        self.gesture_button_frames = []
+        for gesture in GESTURES.values():
+            frame = self.generate_frame(gesture)
+            self._general_grid.addWidget(frame)
+            self.gesture_button_frames.append(frame)
+
+        # Show the gesture button frame for the current gesture type.
+        self.show_gesture_buttons(GESTURE_TYPES.index(self.gesture_type))
 
     def generate_frame(self, grid_items):
         grid = QtWidgets.QGridLayout()
@@ -202,97 +258,52 @@ class MyWindow(QMainWindow):
         
         frame = QtWidgets.QFrame()
         frame.setLayout(grid)
-        return frame
+        return frame        
 
+    def create_calibration_button(self):
+        calibration_button = QPushButton("Recalibrate Sensitivty", self)
+        calibration_button.clicked.connect(self.recalibrate)
+        calibration_button.setStyleSheet("background-color : grey; color: white")
+
+        # Add to the general grid.
+        self._general_grid.addWidget(calibration_button)
+
+    def create_test_button(self):
+        test_button = QPushButton("Self-test", self)
+        test_button.clicked.connect(lambda: self.measure("test", False))
+        test_button.setStyleSheet("background-color: purple; color: white")
+
+        # Add to the general grid.
+        self._general_grid.addWidget(test_button)
+
+    def data_button_clicked(self):
+        if self.serial_port is None:
+            msg = QMessageBox()
+            msg.setText("No serial port selected for serial connection...")
+            msg.exec()
+        else:
+            print("Data button clicked")
+            # print(self.sender().text()) 
+            self.measure(self.sender().text())
+
+    def get_default(self, field):
+        defaults = DEFAULTS_PER_GESTURE_TYPE[self.gesture_type]
+        if defaults is None or field not in defaults:
+            raise Exception("No default value for field: " + field)
+    
+        return defaults[field]
+        
+
+    # Allow closing the window.
     def closeEvent(self, event):
         event.accept()
 
-    def view(self, gesture):
-        
-        # Select frequency and duration of beep
-        frequency = 500  # Set Frequency To 2500 Hertz
-        duration = 500  # Set Duration To 1000 ms == 1 second
-
-        if winsound is not None:
-            winsound.Beep(frequency, duration)
-
-        self.count += 1
-        print("starting ", self.count)
-
-        # Set the number of samples we collect
-        if gesture == "control_data":
-            num_readings = 1000
-        else:
-            num_readings = 500
-
-        ser = serial.Serial(self.com_port, BAUD_RATE, timeout=1)
-
-        # Construct data to send over to Arduino
-        header = np.uint16(MEAS_START)
-        number = np.uint32(num_readings)
-        data = header.tobytes() + number.tobytes()
-        print(len(data))
-        ser.write(bytes(data))
-        
-        # The first value we get back is the calibration value
-        while not ser.closed and ser.in_waiting == 0:
-            pass
-
-        resistor_value = ser.readline()
-        print("The resistor value is: %s" % int(resistor_value))
-        
-        reader = ReadLine(ser)
-        time.sleep(2)
-
-        # Sampling the data
-        self.data = []
-        for i in range(num_readings):
-            line = reader.readline()  # read a byte string
-            if line:
-                string = line.decode().strip("\n")  # convert the byte string to a unicode string
-                t = list(map(int, string.split(", ")))
-                self.data.append(t)  # add int to data list
-        ser.close()
-
-        # build the plot
-        plt.plot(self.data)
-        plt.xlabel('Time')
-        plt.ylabel('Photodiode Reading')
-        plt.title(f'candidate {self.candidate_identifier}')
-        plt.show()
-
-        # Saving data
-        if gesture == "control":
-            path = os.path.join(DATA_ROOT_PATH, gesture)
-        else:
-            path = os.path.join(DATA_ROOT_PATH, gesture, self.chosen_hand)
-
-        # Create directory if it doesn't exist yet
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        data_dict = {
-            'data': np.array(self.data),
-            'gesture': gesture,
-            'hand': self.chosen_hand,
-            'candidate': self.candidate_identifier,
-            'resistor_value': resistor_value
-        }
-
-        with open(os.path.join(path, f"candidate_{self.candidate_identifier}.pickle"), "ab+") as file:
-            pickle.dump(data_dict, file)
-
-        if SAVE_PLOT:
-            plt.savefig(os.path.join(path, f"candidate_{self.candidate_identifier}_{self.count}.png"))
-
-
-        print("done ", self.count)
-
-
-def window():
+if __name__ == "__main__":
     app = QApplication(sys.argv)
-    win = MyWindow()
-    win.show()
+    window = CollectionWindow()
+    window.show()
     sys.exit(app.exec_())
 
-window()
+
+# Catch the KeyboardInterrupt exception.
+
