@@ -34,7 +34,7 @@ DEFAULTS_PER_GESTURE_TYPE = {
         "sample_duration": 1500,
     },
     "letters": {
-        "sample_rate": 500,
+        "sample_rate": 100,
         "sample_duration": 4000,
     },
 }
