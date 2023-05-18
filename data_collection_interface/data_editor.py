@@ -27,7 +27,7 @@ class MyWindow(QMainWindow):
 
         # Getting all of the base paths in the dataset folder
         self.base_paths = []
-        for filename in glob.iglob("./final_dataset/" + '**/**/*_hand', recursive=True):
+        for filename in glob.iglob("./dataset/" + '**/**/*_hand', recursive=True):
             self.base_paths.append(filename)
 
         # Uncomment to view the control files

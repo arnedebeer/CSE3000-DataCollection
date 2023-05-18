@@ -17,7 +17,7 @@ def serial_ports():
         # this excludes your current terminal "/dev/tty"
         ports = glob.glob('/dev/tty[A-Za-z]*')
     elif sys.platform.startswith('darwin'):
-        ports = glob.glob('/dev/tty.usbmodem23101')
+        ports = glob.glob('/dev/tty.usbmodem14201')
     else:
         raise EnvironmentError('Unsupported platform')
 
