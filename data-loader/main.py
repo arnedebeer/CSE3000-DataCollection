@@ -97,6 +97,9 @@ def plot(data : dict = None) -> None:
 
 
 
-data :list = load_gesture_samples(GestureNames.char_E)
+data :list = load_gesture_samples(GestureNames.char_A)
 
-print(len(data))
+print(data[2])
+
+for candidate_data in data:
+    print(candidate_data)
