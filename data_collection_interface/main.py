@@ -1,7 +1,17 @@
 # New version of the window.
 
+from pathlib import Path
 from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QPushButton, QComboBox, QLineEdit, QLabel, QMessageBox
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QAction,
+    QPushButton,
+    QComboBox,
+    QLineEdit,
+    QLabel,
+    QMessageBox,
+)
 import sys
 from util import serial_ports, auto_select_serial_port
 from collector import Collector
@@ -16,9 +26,20 @@ START_DELAY = 500  # Delay before measurment starts in ms.
 # Whole gesture selection UI is created from these constants.
 GESTURE_TYPES = ["gestures", "digits", "letters"]
 GESTURES = {
-    "gestures":  ["swipe_left", "swipe_right", "swipe_up", "swipe_down", "clockwise", "counter_clockwise", "tap", "double_tap", "zoom_in", "zoom_out"],
+    "gestures": [
+        "swipe_left",
+        "swipe_right",
+        "swipe_up",
+        "swipe_down",
+        "clockwise",
+        "counter_clockwise",
+        "tap",
+        "double_tap",
+        "zoom_in",
+        "zoom_out",
+    ],
     "digits": ["#" + str(i) for i in range(10)],  # 0, #1, #2, #3, etc.
-    "letters": [("char_" + chr(i)) for i in range(ord('A'), ord('J')+1)]
+    "letters": [("char_" + chr(i)) for i in range(ord("A"), ord("J") + 1)],
 }
 DEFAULT_GESTURE_TYPE = "gestures"  # Easy for testing.
 
@@ -31,7 +52,7 @@ DEFAULTS_PER_GESTURE_TYPE = {
     },
     "digits": {
         "sample_rate": 1000,
-        "sample_duration": 1500,
+        "sample_duration": 2000,
     },
     "letters": {
         "sample_rate": 100,
@@ -44,7 +65,6 @@ SAMPLE_DURATIONS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000]
 
 
 class CollectionWindow(QMainWindow):
-
     sample_rate: int
     serial_port: str
     candidate_identifier: str
@@ -81,32 +101,45 @@ class CollectionWindow(QMainWindow):
         return Collector(self.serial_port)
 
     def measure(self, gesture, save=True):
-        if (self.resistance is None):
+        if self.resistance is None:
             self.recalibrate()  # Only recalibrate if we haven't already.
 
         # Sleep for a bit before starting the measurement.
         time.sleep(START_DELAY / 1000)
 
         print("\n========== Start of measurement ===========")
-        print("[UI] Collecting data for candidate '{}' with '{}' for gesture '{}' ({}) at sample rate '{} Hz' with '{} kOhm' resistance for '{} ms'".format
-              (self.candidate_identifier, self.chosen_hand, gesture, self.gesture_type, self.sample_rate, self.resistance / 1000, self.sample_duration))
+        print(
+            "[UI] Collecting data for candidate '{}' with '{}' for gesture '{}' ({}) at sample rate '{} Hz' with '{} kOhm' resistance for '{} ms'".format(
+                self.candidate_identifier,
+                self.chosen_hand,
+                gesture,
+                self.gesture_type,
+                self.sample_rate,
+                self.resistance / 1000,
+                self.sample_duration,
+            )
+        )
         collector = self.collector()
         # Set the resistance, to avoid recalibrating.
         collector.resistance = self.resistance
 
         data = collector.measure(
-            duration=self.sample_duration / 1000, sample_rate=self.sample_rate)
+            duration=self.sample_duration / 1000, sample_rate=self.sample_rate
+        )
         print(len(data.data))
         print("========== End of measurement ===========\n")
 
         # Set metadata for the data.
-        data.set_metadata(candidate=self.candidate_identifier,
-                          hand=self.chosen_hand,
-                          gesture_type=self.gesture_type,
-                          target_gesture=gesture)
+        data.set_metadata(
+            candidate=self.candidate_identifier,
+            hand=self.chosen_hand,
+            gesture_type=self.gesture_type,
+            target_gesture=gesture,
+        )
 
         if save:
             data.save_to_file()  # Save the data to a file.
+
         data.plot()  # Plot the data.
 
     def initializeUI(self):
@@ -135,7 +168,9 @@ class CollectionWindow(QMainWindow):
         self.create_test_button()
         self.create_gesture_buttons()
 
-    def create_dropdown(self, label: str, options: list, field: str, on_change=None) -> QComboBox:
+    def create_dropdown(
+        self, label: str, options: list, field: str, on_change=None
+    ) -> QComboBox:
         # Default dropdown changed function.
         def dropdown_changed(changedToIndex):
             setattr(self, field, options[changedToIndex])
@@ -148,7 +183,7 @@ class CollectionWindow(QMainWindow):
         dropdown.currentIndexChanged.connect(dropdown_changed)
 
         # Set the initial value of the dropdown to the value of the field
-        if (hasattr(self, field)):  # Only if the field already exists.
+        if hasattr(self, field):  # Only if the field already exists.
             val = getattr(self, field)  # Get the value of the field.
             # Look for the index of the value in the options.
             default_index = options.index(val) if val in options else 0
@@ -163,21 +198,30 @@ class CollectionWindow(QMainWindow):
 
     def create_port_dropdown(self):
         dropdown = self.create_dropdown(
-            "Serial Port:", self.available_ports, "serial_port")
+            "Serial Port:", self.available_ports, "serial_port"
+        )
 
     def create_sample_rate_dropdown(self):
         def change_sample_rate(index):
             self.sample_rate = SAMPLE_RATES[index]
 
-        self.sample_rate_dropdown = self.create_dropdown("Sample Rate: (frequency)", list(
-            map(lambda x: str(x) + " Hz", SAMPLE_RATES)), "sample_rate", change_sample_rate)
+        self.sample_rate_dropdown = self.create_dropdown(
+            "Sample Rate: (frequency)",
+            list(map(lambda x: str(x) + " Hz", SAMPLE_RATES)),
+            "sample_rate",
+            change_sample_rate,
+        )
 
     def create_sample_duration_dropdown(self):
         def change_sample_duration(index):
             self.sample_duration = SAMPLE_DURATIONS[index]
 
-        self.sample_duration_dropdown = self.create_dropdown("Sample Duration: (millisconds)", list(
-            map(lambda x: str(x) + " ms", SAMPLE_DURATIONS)), "sample_duration", change_sample_duration)
+        self.sample_duration_dropdown = self.create_dropdown(
+            "Sample Duration: (millisconds)",
+            list(map(lambda x: str(x) + " ms", SAMPLE_DURATIONS)),
+            "sample_duration",
+            change_sample_duration,
+        )
 
     def set_default_sample_settings(self):
         # Set the default sample rate and duration for the current gesture type.
@@ -187,21 +231,26 @@ class CollectionWindow(QMainWindow):
         # Set the dropdowns to the right values if they exist.
         if hasattr(self, "sample_rate_dropdown"):
             self.sample_rate_dropdown.setCurrentIndex(
-                SAMPLE_RATES.index(self.sample_rate))
+                SAMPLE_RATES.index(self.sample_rate)
+            )
         if hasattr(self, "sample_duration_dropdown"):
             self.sample_duration_dropdown.setCurrentIndex(
-                SAMPLE_DURATIONS.index(self.sample_duration))
+                SAMPLE_DURATIONS.index(self.sample_duration)
+            )
 
     def create_gesture_type_dropdown(self):
         def show_gesture_buttons(index):
             self.show_gesture_buttons(index)
             self.set_default_sample_settings()
 
-        self.create_dropdown(label="Gesture Type:", options=GESTURE_TYPES,
-                             field="gesture_type", on_change=show_gesture_buttons)
+        self.create_dropdown(
+            label="Gesture Type:",
+            options=GESTURE_TYPES,
+            field="gesture_type",
+            on_change=show_gesture_buttons,
+        )
 
     def create_input(self, label: str, field: str):
-
         def input_changed(changedTo):
             # Get the attribute name from the field.
             setattr(self, field, changedTo)
@@ -272,8 +321,7 @@ class CollectionWindow(QMainWindow):
     def create_calibration_button(self):
         calibration_button = QPushButton("Recalibrate Sensitivty", self)
         calibration_button.clicked.connect(self.recalibrate)
-        calibration_button.setStyleSheet(
-            "background-color : grey; color: white")
+        calibration_button.setStyleSheet("background-color : grey; color: white")
 
         # Add to the general grid.
         self._general_grid.addWidget(calibration_button)

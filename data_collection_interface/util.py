@@ -46,3 +46,4 @@ def auto_select_serial_port() -> str:
     
     return ports[0] # Otherwise just return the first port
     
+

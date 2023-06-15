@@ -3,6 +3,8 @@
 # Following lines are to avoid cyclic dependencies in type checking.
 from __future__ import annotations
 from typing import TYPE_CHECKING
+
+from path_predictor import PathPredictictor
 if TYPE_CHECKING:
     from collector import Collector
 
@@ -129,7 +131,20 @@ class GestureData:
         fig.subplots_adjust(bottom=0.3)
 
         # Plot the data.
-        plt.plot(self.data)
+
+        # x_values = []
+        # y_values = []
+
+        # for i in range(0, len(self.data)):
+        #     x_values.append(self.data[i][1] * 0.2 + self.data[i][2] * 0.8)
+        #     y_values.append(self.data[i][0] * 0.5)
+
+        # x_values = np.convolve(np.pad(x_values, (5//2, 5//2), mode='edge'), np.ones(5) / 5, mode='valid')
+        # y_values = np.convolve(np.pad(y_values, (5//2, 5//2), mode='edge'), np.ones(5) / 5, mode='valid')
+
+        pp = PathPredictictor()
+        path = pp.predict(self.data).transpose()
+        plt.plot(path[0], path[1], color="red")
 
         # Set the labels of the axes.
         plt.set_xlabel("Samples")
@@ -143,6 +158,9 @@ class GestureData:
         # Set the title of the plot.
         title = target_gesture + " by " + candidate
         plt.set_title(title) 
+
+        print(self.data[len(self.data) - 1])
+        print(self.data)
         
         # If "d" is pressed, prompt the user to remove the gesture from the dataset.
         def on_key(event):  
