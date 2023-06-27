@@ -16,6 +16,11 @@ from util import serial_ports, auto_select_serial_port
 from collector import Collector
 import time
 
+try:
+    import winsound as sound
+except ImportError:
+    sound = None
+
 DEFAULT_CANDIDATE = "default"
 
 DATASET_FOLDER = "data/"
@@ -102,6 +107,10 @@ class CollectionWindow(QMainWindow):
     def measure(self, gesture, save=True):
         if self.resistance is None:
             self.recalibrate()  # Only recalibrate if we haven't already.
+
+        # Beep to indicate the start of the measurement.
+        if sound is not None:
+            sound.Beep(1000, 100)
 
         # Sleep for a bit before starting the measurement.
         time.sleep(START_DELAY / 1000)
